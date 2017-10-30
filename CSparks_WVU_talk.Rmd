@@ -1,0 +1,518 @@
+---
+title: Bayesian Spatio-temporal analysis of mortality differentials in the US using
+  the INLA approach
+author: 
+- "Corey S. Sparks, Ph.D."
+institute:
+-  "Univerity of Texas at San Antonio - Department of Demography"
+date: "October 26, 2017"
+output:
+  beamer_presentation:
+    incremental: no
+---
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+load("~/Google Drive/talk326.Rdata")
+require(INLA)
+
+```
+
+## Presentation Structure
+
+- Introduction to Mortality Disparities in the US
+- The role of residential segregation
+- Research Questions
+- Data
+- Methods - The INLA approach to Bayesian analysis
+- Results & visualizations
+- Wrap up
+
+## Introduction
+* Black-White disparities in mortality rates persist
+* Most research focuses on individual level factors 
+    + SES, Health behaviors
+* More recent work is multilevel 
+    + Context of health, neighborhoood conditions
+* Role of residential segregation on aggregate mortality rates still poorly understood
+
+
+## Segregation & Mortality
+
+* Williams and Collins (2001) offer one of the first conceptual pieces to link segregation to poor health.
+* Segregation spatially and socially patterns:
+    + Poverty
+    + Economic and educational opportunities
+    + Social order or disorder
+    + Access to resources 
+* Segregation could lead to better health outcomes (political representation, social support, cohesion) 
+
+## Research Questions
+* Does the effect of segregation produce the same disparity in black and white mortality rates over time?
+* Do counties with persistently high segregation show the same mortality disadvantage for both black and white mortality rates?
+* Does segregation have any protective advantage on county-level mortality rates?
+    + For black mortality specifically
+
+## Data
+
+* NCHS [Compressed Mortality File](http://www.cdc.gov/nchs/data_access/cmf.htm)
+    + County - level counts of deaths by year, age, sex, race/ethnicity and cause of death
+    + 1980 to 2010
+    + Age, sex and race _(white & black)_ specific rates for all US counties
+    ```{r, echo=FALSE}
+options("scipen"=100, "digits"=4)
+```
+    + In total: `r  8776385+9691181+17280710` deaths in the data
+    + Standardized to 2000 Standard US population age structure
+    + Rates stratified by race and sex for each county by year
+    + n = 2 sexes * 2 races * 3106 counties * 31 years = `r 2*2*31*3106` observations 
+    + *Analytic* n = 315,808 nonzero rates
+
+## Data - Access
+* You can basically get these data from the CDC Wonder [website](http://wonder.cdc.gov/mortsql.html)
+* Supresses counts where the number of deaths is less than 10
+* Rates are labeled as "__unreliable__" when the rate is calculated with a numerator of 20 or less
+    + Big problem for small population counties
+    + Still a problem for large population counties!
+* Restricted use data allows access to __ALL__ data
+
+
+## Data - Example
+Bexar County, TX 1980 - 1982
+```{r echo=FALSE, warning=FALSE}
+library(knitr)
+#sdadata2$year<-sdadata2$year
+sdadata2$mortality<-sdadata2$std_rate
+sdadata2$race_sex<-factor(ifelse(sdadata2$black==1&sdadata2$male==0, "Black Female",
+                            ifelse(sdadata2$black==1&sdadata2$male==1, "Black Male",
+                                   ifelse(sdadata2$black==0&sdadata2$male==0, "White Female","White Male"))))
+sdadata2<-sdadata2[order(sdadata2$cofips, sdadata2$year, sdadata2$male, sdadata2$black), ]
+
+bex1<-sdadata2[sdadata2$cofips=="48029", c("cofips","year", "race_sex", "mortality")] ; bex1<-bex1[is.na(bex1$cofips)==F,]
+mon1<-sdadata2[sdadata2$cofips=="54061", c("cofips","year", "race_sex", "mortality")];mon1<-mon1[is.na(mon1$cofips)==F,]
+library(knitr)
+#print(head(bex1, n=12), row.names=F, digits=2)
+knitr::kable(head(bex1, n=12), row.names = F, col.names = c("County", "Year", "Race-Sex", "Rate"),align = "c")
+```
+
+## Data - Example
+Monongalia County, TX 1980 - 1982
+```{r, echo=FALSE}
+#print(head(mon1, n=12), row.names=F, digits=2)
+knitr::kable(head(mon1, n=12), row.names = F, col.names = c("County", "Year", "Race-Sex", "Rate"),align = "c")
+```
+
+## Data - Example
+County specific temporal trends 1980 - 2010
+
+```{r, message=FALSE, echo=FALSE, fig.width=8, fig.height=5, warning=FALSE}
+bex1$race<-substr(bex1$race_sex,1,5)
+library(ggplot2)
+p1<-ggplot(bex1,aes(year,mortality),xlab="Year",ylab="Mortality Rate")+geom_line(aes(colour=race_sex ) , lwd=1.25)+ylab("Mortality Rate per 1,000")+xlab("Year")+ggtitle("Bexar County, TX, 1980 - 2010")+ ylim(c(0, 35))+theme(legend.text=element_text(size=8),legend.position=c(.5,1),legend.direction = "horizontal",legend.title = element_blank())+scale_color_brewer(type="qual", "Set1")
+
+p2<-ggplot(mon1,aes(year,mortality),xlab="Year")+geom_line(aes(colour=race_sex), lwd=1.25)+ylab("Mortality Rate per 1,000")+xlab("Year")+ggtitle("Monongalia County, WV, 1980 - 2010")+ylim(c(0,35))+theme(legend.position="none")+scale_color_brewer(type="qual", "Set1")
+
+library(NetworkChange)
+pl<-list(p1, p2)
+multiplot(plotlist=pl, cols = 2)
+
+
+```
+
+## Data - Example of Geographic Variation
+Spatial Distribution of White & Black Mortality in the US: 1980-1985 Period
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(maptools)
+library(tigris)
+spdat<- counties(cb=T, refresh=T)
+sts<- states(cb=T)
+spdat$GEOID10<-paste(spdat$STATEFP,spdat$COUNTYFP,sep = "")
+#plot(spdat)
+sdadata2$state<-substr(sdadata2$cofips,1,2)
+meansw<-aggregate(std_rate~cofips, data=sdadata2[sdadata2$black==0&sdadata2$year%in%1980:1985,], mean, na.rm=T)
+
+meansb<-aggregate(std_rate~cofips, data=sdadata2[sdadata2$black==1&sdadata2$year%in%1980:1985,], mean, na.rm=T)
+#mdat<-spdat@data
+library(tigris)
+mdat<- geo_join(spdat, meansw, by_sp="GEOID10",by_df="cofips" )
+mdat$whmort<-mdat$std_rate
+mdat<-geo_join(mdat, meansb,by_sp="GEOID10",by_df="cofips")
+mdat$blmort<-mdat$std_rate.1
+#spdat@data<-mdat
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(RColorBrewer)
+cols<-brewer.pal(n=9, "Reds")
+library(sf)
+msf<-st_as_sf(mdat)
+sts<-st_as_sf(sts)
+#msf_lcc <- st_transform(msf,test)
+msf$wmort_q<-cut(msf$whmort, breaks = quantile(sdadata2$std_rate, probs = seq(0,1,.2), na.rm = T),include.lowest = T)
+msf$bmort_q<-cut(msf$blmort, breaks = quantile(sdadata2$std_rate, probs = seq(0,1,.2), na.rm = T),include.lowest = T)
+
+library(ggplot2);library(dplyr); library(forcats)
+msf<-st_transform(msf, crs = 102004)
+sts<-st_transform(sts, crs=102004)
+msf<-msf%>%
+  filter(!STATEFP%in%c("02","15","60","64", "66", "68","69","70", "72","74", "78" ))
+sts<-sts%>%filter(!STATEFP%in%c("02","15","60","64", "66", "68","69","70", "72","74", "78"))%>%st_boundary()
+
+
+p1<-ggplot() +
+  geom_sf(data=msf,aes(fill = wmort_q, color=wmort_q)) +
+  scale_fill_brewer("Quantile", palette = "Blues", na.value="grey") +
+  scale_color_brewer("Quantile",palette = "Blues", na.value="grey")+
+  geom_sf(data=sts, color="black")+
+  ggtitle(label = "White Mortality Rate", subtitle = "1980- 1985 Period")
+
+# p<-ggplot() +
+# geom_sf(data=msf,aes(fill = wmort_q, color=wmort_q)) +
+# scale_fill_brewer(palette = "Blues") +
+# scale_color_brewer(palette = "Blues")+
+# geom_sf(data=sts, color="black")
+
+p2<-ggplot() +
+  geom_sf(data=msf,aes(fill = bmort_q, color=bmort_q)) +
+  scale_fill_brewer("Quantile", palette = "Blues", na.value="grey") +
+  scale_color_brewer("Quantile", palette = "Blues", na.value="grey")+
+  geom_sf(data=sts, color="black")+
+  ggtitle(label = "Black Mortality Rate", subtitle = "1980- 1985 Period")
+
+pl<-list(p1, p2)
+
+library(NetworkChange)
+multiplot(plotlist = pl, cols = 2)
+
+```
+
+##Data - Example of Geographic Variation
+Spatial Distribution of White & Black Mortality in the US: 2005-2010 Period
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(maptools)
+spdat<- tigris::counties(cb=T, year=2010)
+sts<- tigris::states(cb=T)
+spdat$GEOID10<-paste(spdat$STATE,spdat$COUNTY,sep = "")
+#plot(spdat)
+sdadata2$state<-substr(sdadata2$cofips,1,2)
+meansw<-aggregate(std_rate~cofips, data=sdadata2[sdadata2$black==0&sdadata2$year%in%2000:2010,], mean, na.rm=T)
+
+meansb<-aggregate(std_rate~cofips, data=sdadata2[sdadata2$black==1&sdadata2$year%in%2000:2010,], mean, na.rm=T)
+#mdat<-spdat@data
+library(tigris)
+mdat<- geo_join(spdat, meansw, by_sp="GEOID10",by_df="cofips" )
+mdat$whmort<-mdat$std_rate
+mdat<-geo_join(mdat, meansb,by_sp="GEOID10",by_df="cofips")
+mdat$blmort<-mdat$std_rate.1
+#spdat@data<-mdat
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(RColorBrewer)
+cols<-brewer.pal(n=9, "Reds")
+library(sf)
+msf<-st_as_sf(mdat)
+sts<-st_as_sf(sts)
+#msf_lcc <- st_transform(msf,test)
+msf$wmort_q<-cut(msf$whmort, breaks = quantile(sdadata2$std_rate, probs = seq(0,1,.2), na.rm = T),include.lowest = T)
+msf$bmort_q<-cut(msf$blmort, breaks = quantile(sdadata2$std_rate, probs = seq(0,1,.2), na.rm = T),include.lowest = T)
+
+library(ggplot2);library(dplyr); library(forcats)
+msf<-st_transform(msf, crs = 102004)
+sts<-st_transform(sts, crs=102004)
+msf<-msf%>%
+  filter(!STATEFP%in%c("02","15", "72" ))
+sts<-sts%>%filter(!STATEFP%in%c("02","15","60", "66","69", "72", "78"))%>%st_boundary()
+
+
+p1<-ggplot() +
+  geom_sf(data=msf,aes(fill = wmort_q, color=wmort_q)) +
+  scale_fill_brewer("Quantile", palette = "Blues", na.value="grey") +
+  scale_color_brewer("Quantile",palette = "Blues", na.value="grey")+
+  geom_sf(data=sts, color="black")+
+  ggtitle(label = "White Mortality Rate", subtitle = "2005 - 2010 Period")
+
+# p<-ggplot() +
+# geom_sf(data=msf,aes(fill = wmort_q, color=wmort_q)) +
+# scale_fill_brewer(palette = "Blues") +
+# scale_color_brewer(palette = "Blues")+
+# geom_sf(data=sts, color="black")
+
+p2<-ggplot() +
+  geom_sf(data=msf,aes(fill = bmort_q, color=bmort_q)) +
+  scale_fill_brewer("Quantile", palette = "Blues", na.value="grey") +
+  scale_color_brewer("Quantile", palette = "Blues", na.value="grey")+
+  geom_sf(data=sts, color="black")+
+  ggtitle(label = "Black Mortality Rate", subtitle = "2005 - 2010 Period")
+
+pl<-list(p1, p2)
+
+library(NetworkChange)
+multiplot(plotlist = pl, cols = 2)
+
+```
+
+
+##State Examples
+```{r, echo=FALSE}
+p1<-ggplot() +
+  geom_sf(data=msf[msf$STATEFP=="48", ],aes(fill = wmort_q, color=wmort_q)) +
+  scale_fill_brewer("Quantile", palette = "Blues", na.value="grey") +
+  scale_color_brewer("Quantile",palette = "Blues", na.value="grey")+
+  geom_sf(data=sts[sts$STATEFP=="48",], color="black")+
+  ggtitle(label = "White Mortality Rate", subtitle = "1980- 1985 Period")
+
+
+# p<-ggplot() +
+# geom_sf(data=msf,aes(fill = wmort_q, color=wmort_q)) +
+# scale_fill_brewer(palette = "Blues") +
+# scale_color_brewer(palette = "Blues")+
+# geom_sf(data=sts, color="black")
+
+p2<-ggplot() +
+  geom_sf(data=msf[msf$STATEFP=="48",],aes(fill = bmort_q, color=bmort_q)) +
+  scale_fill_brewer("Quantile", palette = "Blues", na.value="grey") +
+  scale_color_brewer("Quantile", palette = "Blues", na.value="grey")+
+  geom_sf(data=sts[sts$STATEFP=="48",], color="black")+
+  ggtitle(label = "Black Mortality Rate", subtitle = "1980- 1985 Period")
+
+pl<-list(p1, p2)
+
+library(NetworkChange)
+multiplot(plotlist = pl, cols = 2)
+
+```
+
+##
+
+```{r, echo=F}
+meansw<-aggregate(std_rate~cofips, data=sdadata2[sdadata2$black==0&sdadata2$year%in%2005:2010,], mean, na.rm=T)
+
+meansb<-aggregate(std_rate~cofips, data=sdadata2[sdadata2$black==1&sdadata2$year%in%2005:2010,], mean, na.rm=T)
+#mdat<-spdat@data
+library(tigris)
+mdat<- geo_join(spdat, meansw, by_sp="GEOID10",by_df="cofips" )
+mdat$whmort<-mdat$std_rate
+mdat<-geo_join(mdat, meansb,by_sp="GEOID10",by_df="cofips")
+mdat$blmort<-mdat$std_rate.1
+msf<-st_as_sf(mdat)
+sts<-st_as_sf(sts)
+msf$wmort_q<-cut(msf$whmort, breaks = quantile(c(msf$whmort, msf$blmort), probs = seq(0,1,.2), na.rm = T),include.lowest = T)
+msf$bmort_q<-cut(msf$blmort, breaks = quantile(c(msf$whmort, msf$blmort), probs = seq(0,1,.2), na.rm = T),include.lowest = T)
+
+library(ggplot2);library(dplyr); library(forcats)
+msf<-st_transform(msf, crs = 102004)
+sts<-st_transform(sts, crs=102004)
+msf<-msf%>%
+  filter(!STATEFP%in%c("02","15", "72" ))
+sts<-sts%>%filter(!STATEFP%in%c("02","15","60", "66","69", "72", "78"))%>%st_boundary()
+
+
+p1<-ggplot() +
+  geom_sf(data=msf[msf$STATEFP=="54", ],aes(fill = bmort_q, color=bmort_q)) +
+  scale_fill_brewer("Quantile", palette = "Blues", na.value="grey") +
+  scale_color_brewer("Quantile",palette = "Blues", na.value="grey")+
+  geom_sf(data=sts[sts$STATEFP=="54",], color="black")+
+  ggtitle(label = "Black Mortality Rate", subtitle = "2005 - 2010 Period")
+
+# p<-ggplot() +
+# geom_sf(data=msf,aes(fill = wmort_q, color=wmort_q)) +
+# scale_fill_brewer(palette = "Blues") +
+# scale_color_brewer(palette = "Blues")+
+# geom_sf(data=sts, color="black")
+
+p2<-ggplot() +
+  geom_sf(data=msf[msf$STATEFP=="54",],aes(fill = wmort_q, color=wmort_q)) +
+  scale_fill_brewer("Quantile", palette = "Blues", na.value="grey") +
+  scale_color_brewer("Quantile", palette = "Blues", na.value="grey")+
+  geom_sf(data=sts[sts$STATEFP=="54",], color="black")+
+  ggtitle(label = "White Mortality Rate", subtitle = "2005 - 2010 Period")
+
+pl<-list(p1, p2)
+
+library(NetworkChange)
+multiplot(plotlist = pl, cols = 2)
+
+```
+
+
+
+
+## Methods - Hierarchical Model
+* I specify a Bayesian Hierarchical model for the age-standardized mortality rate 
+
+* $$Y_{ij} \sim N(\mu_{ij}, \tau_y)$$
+* $$\mu_{ij} = \beta_{0} + x'\beta +\gamma_j*black_i + u_j + $$
+* $$\gamma_1*\text{time} + \gamma_2* \left ( \text{time} * black_i \right )+\gamma_3*(\text{time} * seg_i)$$
+* $$\gamma_j \sim \text{CAR}(\bar \gamma_j, \tau_{\gamma}/n_j)$$
+* $$u_j \sim \text{CAR}(\bar u_j, \tau_u /n_j)$$
+
+
+* Vague Gamma priors for all the $\tau$'s 
+* Vague Normal priors for all the fixed effect $\beta$'s and $\gamma$'s 
+
+## Methods - Bayesian analysis
+* This type of model is commonly used in epidemiology and public health
+* Various types of data likelihoods may be used
+* Need to get at:
+
+*$$p(\theta|y) \propto p(y|\theta)p(\theta)$$
+
+* Traditionally, we would get $p(\theta|y)$ by:
+    + either figuring out what the full conditionals for all our model parameters are (hard)
+    + Use some form of MCMC to arrive at the posterior marginal distributions for our parameters (time consuming)
+
+## Methods - INLA approach
+* [Integrated Nested Laplace Approximation](http://www.math.ntnu.no/~hrue/r-inla.org/papers/inla-rss.pdf) - Rue, Martino & Chopin (2009)
+* One of several techniques that approximate the marginal and conditional posterior densities
+    + Laplace, PQL, E-M, Variational Bayes
+* Assumes all random effects in the model are latent, zero-mean Gaussian random field, $x$ with some precision matrix
+    + The precision matrix depends on a small set of hyperparameters
+* Attempts to construct a joint Gaussian approximation for $p(x | \theta, y)$
+    + where $\theta$ is a small subset of hyper-parameters
+
+## Methods - INLA approach
+* Apply these approximations to arrive at:
+* $\tilde{\pi}(x_i | y) = \int \tilde{\pi}(x_i |\theta, y)\tilde{\pi}(\theta| y) d\theta$
+
+* $\tilde{\pi}(\theta_j | y) = \int \tilde{\pi}(\theta| y) d\theta_{-j}$
+
+* where each $\tilde{\pi}(. |.)$ is an approximated conditional density of its parameters
+
+* Approximations to $\pi(x_i | y)$ are computed by approximating both $\pi(\theta| y)$ and $\pi(x_i| \theta, y)$ using numerical integration to integrate out the nuisance parameters. 
+    + This is possible if the dimension of $\theta$ is small.
+* Approximations to $\tilde{\pi}(\theta|y)$ are based on the Laplace appoximation of the marginal posterior density for $\pi(x,\theta|y)$
+* Their approach relies on numerical integration of the posterior of the latent field, as opposed to a pure Gaussian approximation of it
+
+
+## INLA in R {.smaller}
+`library(INLA)`
+
+Unstructured Model
+
+`mod1<-std_rate~male+black+scale(lths)+pershigdis*year`
+`+f(year,model="iid")`
+`+f(conum, model="iid")`
+
+Spatially structured Model with Random Slope
+
+`mod2<-std_rate~male+black+scale(lths)+pershigdis*year`
+`+f(conum, model="bym", graph="usagraph.gra")`
+`+f(year, model="iid")`
+`+f(year, black, model="besag",graph="usagraph.gra")`
+
+
+
+## Spatial Model Results
+
+```{r, echo=FALSE}
+load("~/Google Drive/talks/model_fitinla.Rdata")
+sts<- tigris::states(cb=T)
+library(sf)
+library(tigris)
+usco<-counties( cb=T)
+usco$cofip<-paste(usco$STATEFP, usco$COUNTYFP, sep="")
+datco<-unique(sdadata2$cofips)
+usco<-usco[usco$cofip%in%datco,]
+usco$conum<-1:length(usco)
+
+usco$bl_re<-fit$summary.fixed$mean[3]+fit$summary.random$conum_bl$mean
+usco$sp_re<-fit$summary.random$conum$mean
+#spplot(usco[usco$STATEFP=="54",], "sp_re", at=quantile(usco$sp_re, p=seq(0, 1, .2)), col.regions=RColorBrewer::brewer.pal(n=6, name="RdBu"))
+
+#spplot(usco[usco$STATEFP=="54",], "bl_re", at=quantile(usco$bl_re, p=seq(0, 1, .2)), col.regions=RColorBrewer::brewer.pal(n=6, name="RdBu"))
+
+
+#spplot(usco[usco$STATEFP=="48",], "sp_re", at=quantile(usco$sp_re, p=seq(0, 1, .2)), col.regions=RColorBrewer::brewer.pal(n=6, name="RdBu"))
+
+#spplot(usco[usco$STATEFP=="48",], "bl_re", at=quantile(usco$bl_re, p=seq(0, 1, .2)), col.regions=RColorBrewer::brewer.pal(n=6, name="RdBu"))
+
+#par(mfrow=c(1,1))
+
+#sdadata2$fitted<-mean(sdadata2$std_rate, na.rm=T) + sd(sdadata2$std_rate, na.rm=T)*fit$summary.fitted.values$mean
+
+
+##ggplots
+
+msf<-st_as_sf(usco)
+sts<-st_as_sf(sts)
+#msf_lcc <- st_transform(msf,test)
+msf$spre_q<-cut(msf$sp_re, breaks = quantile(c(msf$sp_re), probs = seq(0,1,.2), na.rm = T),include.lowest = T)
+msf$blre_q<-cut(msf$bl_re, breaks = quantile(c(msf$bl_re), probs = seq(0,1,.2), na.rm = T),include.lowest = T)
+
+library(ggplot2);library(dplyr); library(forcats)
+msf<-st_transform(msf, crs = 102004)
+sts<-st_transform(sts, crs=102004)
+msf<-msf%>%
+  filter(!STATEFP%in%c("02","15", "72" ))
+sts<-sts%>%filter(!STATEFP%in%c("02","15","60", "66","69", "72", "78"))%>%st_boundary()
+
+
+p1<-ggplot() +
+  geom_sf(data=msf,aes(fill = spre_q, color=spre_q)) +
+  scale_fill_brewer("Quantile", palette = "RdBu", na.value="grey") +
+  scale_color_brewer("Quantile",palette = "RdBu", na.value="grey")+
+  geom_sf(data=sts, color="black")+
+  ggtitle(label = "Spatial Random Effect")
+
+p2<-ggplot() +
+  geom_sf(data=msf,aes(fill = blre_q, color=blre_q)) +
+  scale_fill_brewer("Quantile", palette = "RdBu", na.value="grey") +
+  scale_color_brewer("Quantile",palette = "RdBu", na.value="grey")+
+  geom_sf(data=sts, color="black")+
+  ggtitle(label = "Black Random Slope Effect")
+
+library(NetworkChange)
+multiplot(plotlist = list(p1, p2), cols = 2)
+```
+
+
+
+## Model Results
+* Fixed effects
+```{r, echo=FALSE}
+#load("~/Google Drive/fit1.Rdata")
+res<-round(fit$summary.fixed[2:5,c(1,3,5)],3)
+rownames(res)<-c("Male", "Black", "County_Low_Edu", "High_Segregation")
+colnames(res)<-c("Post.Mean", "Lower_BCI", "Upper_BCI")
+library(knitr)
+res
+#kable(res,format = "html",col.names = c("beta", "2.5% BCI", "97.5% BCI"),caption = "Fixed Effects Parameter Estimates"  )
+varsum<-1/fit$summary.hyperpar[,c(1,3,5)]
+row.names(varsum)<-c("Gaussian var", "Spatial var", "Black RS var")
+colnames(varsum)<-c("Post.Mean", "Lower_BCI", "Upper_BCI")
+varsum
+#round(fit$summary.fixed[2:5,c(1,3,5)],3)
+#kable(varsum,format = "html",col.names = c("variance", "2.5% BCI", "97.5% BCI"),caption ="Hyperparameter Estimates" )
+#xtable::xtable(varsum, caption ="Hyperparameter Estimates")
+
+```
+##Temporal effects of segregation
+```{r, echo=FALSE}
+res<-fit$summary.fixed[36:65, c(1,3,5)]
+res$year<-1981:2010
+res$hi<-res$`0.975quant`
+res$lo<-res$`0.025quant`
+ggplot(data=res,aes(x=year, y=mean))+geom_line( )+geom_ribbon(aes(ymin=lo, ymax=hi, x=year), alpha=.3)+geom_hline(yintercept=0, color="red")+ggtitle("Temporal Effect of High Segregation", subtitle = "1980-2010")
+
+```
+
+## Discussion
+* We see that, while there is a persistence of the gap in black-white mortality:
+    + The mortality gap appears to be fairly consistent over time
+    + In highly segregated areas, the mortality difference are decreasing
+    + Suggests some evidence to support the Williams and Collins (2001) perspective
+
+* INLA allows for rapid deployment of Bayesian statistical models with latent Gaussian random effects
+    + Faster and *generally* as accurate as MCMC
+    + Potentially an attractive solution for problems where large data/complex models may make MCMC less desireable
+
+## Thank you!
+
+corey.sparks@utsa.edu
+
+[Coreysparks1](http://twitter.com/CoreySparks1)
+
+[UTSA Demography](http://copp.utsa.edu/department/category/demography/)
+
