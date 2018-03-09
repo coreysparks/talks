@@ -1,0 +1,377 @@
+---
+title: "Poverty and Female Homicide in Mexican Municipalities A Bayesian Spatio-Temporal Analysis"
+author: |
+ | Corey S. Sparks, Ph.D.
+ | Miguel Flores Segovia, Ph.D.
+ |Uriel Lomeli Carillo, M.S.
+institute:
+- Univerity of Texas at San Antonio - Department of Demography
+- Tecnologico de Monterrey - Escuela de Gobierno y Transformacion Publica
+- Univerity of Texas at San Antonio - Department of Demography
+date: "March 8, 2018"
+output: 
+  ioslides_presentation
+---
+
+
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(mapview)
+library(RColorBrewer)
+library(sf)
+library(dplyr)
+library(classInt)
+library(ggplot2)
+load(file = "~/Google Drive/Uriel_research/paa_data.Rdata") #n_dat_sp
+load(file = "~/Google Drive/Uriel_research/annual_agestd_homicide_rates.Rdata") #hom_rates
+
+```
+
+
+
+## Presentation Structure
+
+- Introduction to the present project
+- Objectives of the current research
+- Background and Context
+- Research Questions
+- Data sources
+- Methods - Spatial data are special!
+- Methods - The INLA approach to Bayesian analysis
+- Results & visualizations
+- Wrap up and current work
+
+## Introduction to the present project
+* Women in Latin America face violence in many form in daily life
+    + Daughters, sisters, wives; working or retired
+* **Machismo** and **Marianismo** are cultural traditions found throughout Latin America
+    + Stress the persistent conflict between being "manly" and being "pure and passive"
+    + Often leads to conflict within households & domestic violence
+    + *Absolutely not unique to Latin America*
+
+##  Introduction to the present project
+* **La cultura de violencia** 
+*   In Mexico, 44% of women have suffered some type of violence from their partner. [Report](http://internet.contenidos.inegi.org.mx/contenidos/productos//prod_serv/contenidos/espanol/bvinegi/productos/estudios/sociodemografico/mujeresrural/2011/EUM/702825051266_1.pdf)
+*  This often results in some form of internal displacement for women and men
+    + Attempting to leave this violence behind and seek asylum
+    + Women are often targeted for violence by cartels or gangs
+
+## Introduction to the present Project
+* Spatial poverty traps
+    + Areas where poverty is persisently high over both time and space
+    + These are areas where physical, natural, social, political, and human capital is low and poverty is high
+    + Different disciplines provide large amount of evidence on linking poverty and gender based violence
+* The contextual factors related to gender based violence are not only socioeconomic factors
+    + Such as poverty or low education
+    + Also include cultural and demographic patterns mainly in some rural or remote areas of the country
+
+## Objectives of the current research
+* Provide insights into the association between poverty in Mexico and gender-based violence 
+* Identify significant concentrations of high poverty rates and high incidence of gender based violence
+
+## Research Questions
+* Are poverty and female homicide co-incident in Mexico?
+* Is this relationship stationary over time and space? 
+
+
+## Data
+* The information for homicides comes from the vital statistics of the [Instituto Nacional de Estadistica y Geografia (INEGI)](http://www.beta.inegi.org.mx/proyectos/registros/vitales/mortalidad/default.html?init=2)
+    + These data are individual death records
+    + Using ICD-10 codes, we isolate female homicides (ICD-10: X85-Y09) 
+    + Between years 1995 and 2015:  a total of 15,108 homicides
+    + Construct homicide rates by age (5 year age categories), year and municipio of occurrence
+    + This generates a total of `r formatC(dim(hom_rates)[1], format="d", big.mark=",")` rates over the period of study
+    + Standardize all age-specific rates to Mexican national age structure in 2010 and sum rates within municipio and year to arrive at age-standardized rates
+    
+## Data - Some Totals over Time
+* Total homicide rates over time
+```{r, echo=FALSE}
+
+
+hom_rates$sexo<-ifelse(hom_rates$sex==1, "Male", "Female")
+
+agg<-aggregate(cbind(std_rate10, clean_rate)~time,hom_rates, sum)
+#agg$Sex<-agg$sexo
+ggplot(data=agg, aes(y=clean_rate, x=time))+geom_line( lwd=1.75)+xlab("Year")+ ylab("Rate per 100,000")+ theme(axis.text.x = element_text(size = 10), axis.text.y = element_text(size = 12), legend.text = element_text(size = 8), axis.title.x = element_text(size = 12), axis.title.y = element_text(size = 12), title = element_text(size = 10), strip.text.x = element_text(size = 12))+ggtitle("Homicide Rates in Mexican States", sub = "1995 to 2015, Total Population")
+```
+
+## Data - Some Totals over Time - Male and Female Homicide
+```{r, echo=F}
+
+agg<-aggregate(cbind(std_rate10, clean_rate)~sexo+time,hom_rates, sum)
+agg$Sex<-agg$sexo
+ggplot(data=agg, aes(y=clean_rate, x=time))+geom_line(aes(colour=Sex, group=Sex), lwd=1.75)+xlab("Year")+ ylab("Rate per 100,000")+ theme(axis.text.x = element_text(size = 10), axis.text.y = element_text(size = 12), legend.text = element_text(size = 8), axis.title.x = element_text(size = 12), axis.title.y = element_text(size = 12), title = element_text(size = 10), strip.text.x = element_text(size = 12))+ggtitle("Homicide Rates in Mexican States", sub = "1995 to 2015, by Sex")
+
+```
+
+ 
+## Data - National Picture over space
+```{r,  echo=F, message=F}
+library(sf)
+library(dplyr)
+library(classInt)
+library(ggplot2)
+hom_rates$period<-cut(hom_rates$time, breaks = seq(1995, 2015, 5), include.lowest = T)
+#hom_rates$E<-
+#fbrks<-classIntervals(chihua10$std_rate10[chihua10$sexo=="Female"],n = 5, style = "jenks")
+mxmap<-st_read(dsn = "~/Google Drive/Uriel_research", layer = "mx_mun_albers", quiet = T)
+mxmap$clave<-as.character( mxmap$CVEMUNI)
+
+mxhom<-aggregate(cbind(std_rate10, clean_rate)~sexo+clave+period, data = hom_rates, sum)
+mxhom$rate<-mxhom$std_rate10
+#fbrks<-classIntervals(mxhom$clean_rate[mxhom$sexo=="Female"],n = 5, style = "jenks")
+load("~/Google Drive/Uriel_research/fbrks.Rdata")
+mxmapjoin<-left_join(mxmap, mxhom,by=c("clave"="clave"))
+#library(mapview)
+
+mxst<-st_read("C:/Users/ozd504/Google Drive/Uriel_research/mx_state_albers.shp", quiet = T)
+
+sts<-mxst%>%st_boundary()
+
+m1<-mxmapjoin%>%
+  filter(sexo=="Female", period=="[1995,2000]")%>%
+  mutate(       mortquant = cut(clean_rate, breaks= fbrks$brks, include.lowest = T))%>%
+                #mortquant00 = ifelse(period=="(2000,2005]" ,cut(std_rate10, breaks= fbrks$brks, include.lowest = T),NA),
+                #mortquant05 = ifelse(period=="(2005,2010]" ,cut(std_rate10, breaks= fbrks$brks, include.lowest = T), NA))%>%
+  ggplot()+geom_sf(aes( fill=mortquant), colour="transparent")+scale_colour_brewer(palette = "Blues" )+scale_fill_brewer(palette = "Blues", na.value="grey")+guides(fill=guide_legend(title="Mortality Quartile"))+geom_sf(data=sts, color="black")+ggtitle(label="Female homicide rate, 1995-2000")+theme(axis.text.x = element_blank(), axis.text.y = element_blank())+coord_sf(crs = 102008)
+
+# #p2<-mxmapjoin%>%
+#   filter(sexo=="Female", period=="(2000,2005]")%>%
+#   mutate(       mortquant = cut(clean_rate, breaks= fbrks$brks, include.lowest = T))%>%
+#                 #mortquant00 = ifelse(period=="(2000,2005]" ,cut(std_rate10, breaks= fbrks$brks, include.lowest = T),NA),
+#                 #mortquant05 = ifelse(period=="(2005,2010]" ,cut(std_rate10, breaks= fbrks$brks, include.lowest = T), NA))%>%
+#   ggplot()+geom_sf(aes( fill=mortquant), colour="transparent")+scale_colour_brewer(palette = "Blues" )+scale_fill_brewer(palette = "Blues", na.value="grey")+guides(fill=FALSE)+geom_sf(data=sts, color="black")+ggtitle(label="Female homicide rate,2000-2005")+theme(axis.text.x = element_blank(), axis.text.y = element_blank())+coord_sf(crs = 102008)
+
+p3<-mxmapjoin%>%
+  filter(sexo=="Female", period=="(2005,2010]")%>%
+  mutate(       mortquant = cut(clean_rate, breaks= fbrks$brks, include.lowest = T))%>%
+                #mortquant00 = ifelse(period=="(2000,2005]" ,cut(std_rate10, breaks= fbrks$brks, include.lowest = T),NA),
+                #mortquant05 = ifelse(period=="(2005,2010]" ,cut(std_rate10, breaks= fbrks$brks, include.lowest = T), NA))%>%
+  ggplot()+geom_sf(aes( fill=mortquant), colour="transparent")+scale_colour_brewer(palette = "Blues" )+scale_fill_brewer(palette = "Blues", na.value="grey")+guides(fill=guide_legend(title="Mortality Quartile"))+ggtitle(label="Female homicide rate, 2005-2010")+geom_sf(data=sts, color="black")+coord_sf(crs = 102008)
+
+ p4<-mxmapjoin%>%
+   filter(sexo=="Female", period=="(2010,2015]")%>%
+   mutate(       mortquant = cut(clean_rate, breaks= fbrks$brks, include.lowest = T))%>%
+#                 #mortquant00 = ifelse(period=="(2000,2005]" ,cut(std_rate10, breaks= fbrks$brks, include.lowest = T),NA),
+#                 #mortquant05 = ifelse(period=="(2005,2010]" ,cut(std_rate10, breaks= fbrks$brks, include.lowest = T), NA))%>%
+   ggplot()+geom_sf(aes( fill=mortquant), colour="transparent")+coord_sf(crs = 102008)+scale_colour_brewer(palette = "Blues" )+scale_fill_brewer(palette = "Blues", na.value="grey")+ggtitle(label="Female homicide rate, 2010-2015")+geom_sf(data=sts, color="black")
+
+
+#clrs <- colorRampPalette(brewer.pal(5, "Blues"))
+#mapview(mxmap0510, zcol="mortquant95", legend=T, col.regions=clrs)
+#library(gridExtra)
+#grid.arrange(m1, p2, nrow=1)
+
+m1
+```
+
+##Data - National Picture over space
+```{r, echo=F}
+
+p3
+```
+
+##Data - National Picture over space
+```{r, echo=F}
+
+p4
+```
+
+##Spatial variation in poverty
+
+![1990 Poverty Rates](C:/Users/ozd504/Pictures/pov90.jpg)
+
+##Spatial variation in poverty
+
+![2010 Poverty Rates](C:/Users/ozd504/Pictures/pov10.jpg)
+
+##State Examples
+*Chihuahau over time
+
+```{r, echo=F}
+chimap<-st_read(dsn = "~/Google Drive/Uriel_research", layer = "chihua_mun", quiet = T)
+chimap$clave<-as.character( chimap$CVEMUNI)
+
+hom_rates$state<-substr(hom_rates$clave, 1, 2)
+
+chihua10<-hom_rates[hom_rates$state=="08",]
+chihua10<-aggregate(cbind(clean_rate, std_rate10)~sexo+clave+period, data = chihua10, sum)
+
+chimap<-left_join(chimap, chihua10,by=c("clave"="clave"))
+
+
+chimap1<-chimap%>%
+  filter(sexo=="Female", period=="[1995,2000]")%>%
+  mutate(       mortquant95 = cut(clean_rate, breaks= fbrks$brks, include.lowest = T))
+
+#  ggplot()+geom_sf(aes( fill=mortquant95))+coord_sf(crs = 102008)+ facet_wrap(~period)+ scale_colour_brewer(palette = "Blues" )+scale_fill_brewer(palette = "Blues", na.value="grey")+guides(fill=guide_legend(title="Mortality Quartile"))+ggtitle(label = "Female Homicide Rates, 1995 - 2000", subtitle = "State of Chihuahua")
+library(RColorBrewer)
+library(mapview)
+clrs <- colorRampPalette(brewer.pal(5, "Blues"))
+mapview(chimap1, zcol="mortquant95", legend=T, col.regions=clrs, map.types="OpenStreetMap")
+```
+
+##
+```{r, echo=F}
+###Start here
+# chimap3<-chimap %>%
+#   filter(sexo=="Female", period=="(2005,2010")%>%
+#   mutate(       mortquant95 = cut(clean_rate, breaks= fbrks$brks, include.lowest = T))%>%
+#   ggplot()+geom_sf(aes( fill=mortquant10))+coord_sf(crs = 102008)+ scale_colour_brewer(palette = "Blues" )+scale_fill_brewer(palette = "Blues", na.value="grey")+guides(fill=guide_legend(title="Mortality Quartile"))
+
+chimap2<-chimap %>%
+  filter(sexo=="Female", period=="(2005,2010]")%>%
+  mutate(       mortquant= cut(clean_rate, breaks= fbrks$brks, include.lowest = T))
+mapView(chimap2, zcol="mortquant", legend=T, col.regions=clrs, map.types="OpenStreetMap")
+
+```
+
+##
+```{r, echo=F}
+  # ggplot()+geom_sf(aes( fill=mortquant15))+coord_sf(crs = 102008)+ scale_colour_brewer(palette = "Blues" )+scale_fill_brewer(palette = "Blues", na.value="grey")+guides(fill=guide_legend(title="Mortality Quartile"))
+
+chimap3<-chimap %>%
+  filter(sexo=="Female", period=="(2010,2015]")%>%
+  mutate(       mortquant= cut(clean_rate, breaks= fbrks$brks, include.lowest = T))
+mapView(chimap3, zcol="mortquant", legend=T, col.regions=clrs, map.types="OpenStreetMap")
+
+
+```
+
+## Data - Variables
+* Several indicators are used in the analysis to control for physical and socioeconomic environment of **municipios**
+    + Distance to US border
+    + Poverty quartile
+    + Migration intensity
+    + % of population with incomplete primary school
+    + Masculinity index
+    + % population that is married
+    + Average age at first union
+    + Altitude
+    
+    
+## Methods - Hierarchical Model
+* I specify a Bayesian Hierarchical model for the standardized mortality ratio 
+
+* $$Y_{ij} \sim \text{NegBin} (\lambda_{ij} \text{E}_{ij}, \lambda+\lambda^2/\theta)$$
+* $$ln \lambda_{ij} = \beta_{0} + x'\beta +\text{poverty}_i*\text{time}_t+\gamma_j*poverty_i + u_j + v_j$$
+* $$\gamma_1*\text{time} + \gamma_2* \left ( \text{time} * poverty_i \right )+\gamma_3*(\text{time} * seg_i)$$
+* $$\gamma_j \sim \text{CAR}(\bar \gamma_j, \tau_{\gamma}/n_j)$$
+* $$u_j \sim \text{CAR}(\bar u_j, \tau_u /n_j)$$
+* $$v_j \sim \text{N}(0, \tau_v )$$
+
+
+* Vague Gamma priors for all the $\tau$'s 
+* Vague Normal priors for all the fixed effect $\beta$'s and $\gamma$'s 
+
+## Methods - Bayesian analysis
+* This type of model is commonly used in epidemiology and public health
+* Various types of data likelihoods may be used
+* Need to get at:
+
+*$$p(\theta|y) \propto p(y|\theta)p(\theta)$$
+
+* Traditionally, we would get $p(\theta|y)$ by:
+    + either figuring out what the full conditionals for all our model parameters are (hard)
+    + Use some form of MCMC to arrive at the posterior marginal distributions for our parameters (time consuming)
+
+## Methods - INLA approach
+* [Integrated Nested Laplace Approximation](http://www.math.ntnu.no/~hrue/r-inla.org/papers/inla-rss.pdf) - Rue, Martino & Chopin (2009)
+* One of several techniques that approximate the marginal and conditional posterior densities
+    + Laplace, PQL, E-M, Variational Bayes
+* Assumes all random effects in the model are latent, zero-mean Gaussian random field, $x$ with some precision matrix
+    + The precision matrix depends on a small set of hyperparameters
+* Attempts to construct a joint Gaussian approximation for $p(x | \theta, y)$
+    + where $\theta$ is a small subset of hyper-parameters
+
+## Methods - INLA approach
+* Apply these approximations to arrive at:
+* $\tilde{\pi}(x_i | y) = \int \tilde{\pi}(x_i |\theta, y)\tilde{\pi}(\theta| y) d\theta$
+
+* $\tilde{\pi}(\theta_j | y) = \int \tilde{\pi}(\theta| y) d\theta_{-j}$
+
+* where each $\tilde{\pi}(. |.)$ is an approximated conditional density of its parameters
+
+## Methods - INLA approach
+
+* Approximations to $\pi(x_i | y)$ are computed by approximating both $\pi(\theta| y)$ and $\pi(x_i| \theta, y)$ using numerical integration to integrate out the nuisance parameters. 
+    + This is possible if the dimension of $\theta$ is small.
+* Approximations to $\tilde{\pi}(\theta|y)$ are based on the Laplace appoximation of the marginal posterior density for $\pi(x,\theta|y)$
+* Their approach relies on numerical integration of the posterior of the latent field, as opposed to a pure Gaussian approximation of it
+
+
+## Model Results
+* Protective effects on female homicide risk: Shorter distance to border, Higher level of education, higher proportion married, older age at first union
+* Risk factors: High poverty areas farther from the US border
+
+* General hypothesis tests: Poverty displays a constant risk factor for female homicide over time - *consistent temporal effect*
+* Poverty displays little variation in how it impacts female homicide over space - *consistent spatial effect*
+
+## Spatial results
+
+```{r, echo=F, message=F, results="hide"}
+load("~/Google Drive/Uriel_research/inla_out_txst.Rdata")
+cols<-RColorBrewer::brewer.pal(n=6, "Reds")
+cols2<-RColorBrewer::brewer.pal(n=6, "RdBu")
+
+brks<-c(0,0.2,0.5,0.8,.95,1)
+#brks
+
+brks2<-c(.1, .6, 1, 1.25, 1.5, 8)
+#brks2
+library(sp)
+
+estado<-rgdal::readOGR ("C:/Users/ozd504/Google Drive/Uriel_research", "Entidades_2010_5A", verbose = F )
+estado_lin<-as(estado, "SpatialLines")
+#pdf("Year2000Estimates.pdf", width = 12, height=18)
+states<-list("sp.lines", estado_lin, col=1, lwd=.6, lty=4)
+#png(filename = "~/Google Drive/Uriel_research/mxfemhom90_txst.png", width = 1000, height=800, res = 150)
+```
+```{r, echo=F}
+spplot(as(spdat2,"Spatial") ,"rrgt1_25.1990", col.regions=cols, at=brks, col=NA, main=expression(paste("Exceedence Probability for Relative Risk ",", Pr( ",theta," > 1.25", " in 1990 )") ) , sp.layout=states) 
+
+
+```
+
+
+## Spatial results
+
+```{r, echo=F}
+spplot(as(spdat2,"Spatial"), "rrgt1_25.2010", col.regions=cols, at=brks, col=NA, main=expression(paste("Exceedence Probability for Relative Risk ",", Pr( ",theta," > 1.25", " in 2010 )") ) , sp.layout=states) 
+```
+
+## Discussion
+
+* There are several persistent areas of spatial clustering in the northwest of the country
+    + Chihuahua, Durango and Sinaloa
+    + as well as the southwest in states of Oaxaca, Michoacan, Gurrero and Estado de Mexico. 
+
+* No space-time significance of poverty 
+* Poverty is time invariant 
+
+##Next steps
+* Current work is focusing on estimating influence of violence on life expectancy over time
+* Multi-level analysis focusing on incorporating individual level factors with contextual information
+* Exploring other causes of death in the data for spatial and temporal patterns
+
+##Thank you!
+
+corey.sparks@utsa.edu
+
+[Coreysparks1](http://twitter.com/CoreySparks1)
+
+[UTSA Demography](http://copp.utsa.edu/department/category/demography/)
+
+##space
+
+
+## INLA in R {.smaller}
+`library(INLA)`
+
+`f3n<-inla(formula = hfemale.x~scale(loc100_km)*factor(pa_q)+scale(migraes)`
+`+scale(priminc)+scale(imasc)+scale(pobcas)+scale(edadun)+factor(year)*factor(pa_q)`
+`+scale(altitud)+`
+`f(struct, model="bym", graph = "MxMun.graph")+`
+`f(struct2, pa_scale, model="iid")`
+`,family = "nbinomial", E =e_fem+.00001, data = indat)`
