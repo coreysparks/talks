@@ -14,9 +14,9 @@ text( mdy("09/08/1854"), 40, "Pump handle\nremoved Sept. 8", pos=4)
 
 
 ## draw Snow's map and data
-
+png(filename = "~/Documents/GitHub/talks/snow.png", res = 100, width =1000, height = 900)
 SnowMap()
-
+dev.off()
 # add polygons
 SnowMap(polygons=TRUE, main="Snow's Cholera Map with Pump Polygons")
 
