@@ -23,16 +23,22 @@ class: center, middle, inverse, title-slide
 ---
 
 
-# Presentation Structure
+
+
+
+## Presentation Structure
 
 - Spatial and temporal demography
 - Data sources
 - Modeling strategies
+- Empirical analysis of Florida mortality rates
 - Results &amp; visualizations
 - Wrap up
 
 
 ---
+
+##Beyond maps...
 
 .center[![John Snow's Cholera Map](snow.png)]
 
@@ -48,7 +54,7 @@ class: center, inverse
 
 ---
 
-# Spatial Demography
+## Spatial Demography
 
 -  "Putting people into place" (Entwisle, 2007)
   + Need to think about:
@@ -79,7 +85,7 @@ class: center, inverse
 
 ---
 
-# Space &amp; Time
+## Space &amp; Time
 
 - [Future directions in spatial demography](https://escholarship.org/uc/item/7xx3k2z4) report
   + Most participants listed time or temporal data as integral to the future of the field
@@ -89,8 +95,6 @@ class: center, inverse
 - Time allows for dynamics of humans and environment
   + Snap shots/cross sections tell us nothing of this
 
-
--- 
 
 ---
 class: center, middle
@@ -106,7 +110,7 @@ class: center, middle
 ## Complexities
 
 - Humans, I mean c'mon
-&lt;img src="CSparks_FSU_talk_files/figure-html/unnamed-chunk-1-1.png" width="75%" /&gt;
+&lt;img src="CSparks_FSU_talk_files/figure-html/unnamed-chunk-2-1.png" width="75%" /&gt;
 
 
 ---
@@ -126,6 +130,12 @@ class: center, middle
   + Problems with space
   + Problems with time
 
+
+--
+- Advantages
+  + Rich, dynamic contexts
+  + Policy relevance of timely, prospective analysis
+  
 ---
 
 ## Data sources
@@ -177,7 +187,7 @@ class: center, middle
  + People within places, within time periods
 
 - Different types of outcomes
-  + Continuous/discrete observation
+  + Continuous/discrete observations/outcomes
   
 - Can include correlation between higher level units
   + Autocorrelation between places/time periods
@@ -187,22 +197,89 @@ class: center, middle
 
 ---
 
-## Hierarchical models
+## Empirical example
+- US County Mortality Rates
+- NCHS [Compressed Mortality File](http://www.cdc.gov/nchs/data_access/cmf.htm)
+    + County - level counts of deaths by year, age, sex, race/ethnicity and cause of death
+    + 1980 to 2010
+    + Age, sex and race _(white &amp; black)_ specific rates for all US counties
+    + In total: 35,748,276 deaths in the data
+    + Standardized to 2000 Standard US population age structure
+    + Rates stratified by race and sex for each county by year
+    + n = 2 sexes `\(*\)` 2 races `\(*\)` 3106 counties `\(*\)` 31 years = 385,144 observations 
+    + *Analytic* n = 315,808 nonzero rates
 
+--
+
+- You can basically get these data from the CDC Wonder [website](http://wonder.cdc.gov/mortsql.html)
+- Suppresses counts where the number of deaths is less than 10
+- Rates are labeled as "__unreliable__" when the rate is calculated with a numerator of 20 or less
+    + Big problem for small population counties
+    + Still a problem for large population counties!
+    
+--
+
+- Restricted use data allows access to __ALL__ data
+
+
+---
+
+## Data example 
+
+| County | Year |   Race-Sex   |   Rate    |
+|:------:|:----:|:------------:|:---------:|
+| 12073  | 1980 | White Female | 7.238632  |
+| 12073  | 1980 | Black Female | 8.958174  |
+| 12073  | 1980 |  White Male  | 11.840842 |
+| 12073  | 1980 |  Black Male  | 15.907688 |
+| 12073  | 1981 | White Female | 7.383039  |
+| 12073  | 1981 | Black Female | 9.379846  |
+| 12073  | 1981 |  White Male  | 10.518428 |
+| 12073  | 1981 |  Black Male  | 16.626825 |
+| 12073  | 1982 | White Female | 7.370335  |
+| 12073  | 1982 | Black Female | 8.695655  |
+| 12073  | 1982 |  White Male  | 11.902308 |
+| 12073  | 1982 |  Black Male  | 12.149819 |
+
+---
+
+County specific temporal trends 1980 - 2010
+
+![](CSparks_FSU_talk_files/figure-html/unnamed-chunk-4-1.png)&lt;!-- --&gt;
+
+---
+
+## Florida Example
+- n = 67 counties `\(*\)` 31 years `\(*\)` 2 Races `\(*\)` 2 Sexes = 8,308
+
+
+
+
+![](fig2.png)
+
+---
+
+## Methods - Bayesian Hierarchical models
+
+* Example case of Florida counties
+* Examine county-specific time trends in Black/White mortality rates
 * I specify a Bayesian Hierarchical model for the age-standardized mortality rate 
+* Controls for sex and county SES
+* Spatial correlation in overall rate `\(u_j\)`
+* Time varying Black/white disparity parameter `\(\nu_{t2}\)`
+* Spatially varying Black/White disparity parameter `\(\gamma_j\)`
 
 $$
 `\begin{aligned}
-\operatorname{y}_{ij} &amp;\sim NegBin\left( \lambda*Population, \tau \right) \\
-&amp; \mu_{ij} = \beta_{0} + x'\beta +\gamma_j*black_i + u_j + \gamma_1*\text{time} + \gamma_2* \left ( \text{time} * black_i \right )+\gamma_3*(\text{time} * seg_i) \\
+\operatorname{y}_{ij} &amp;\sim N\left( \mu, \tau_y \right) \\
+&amp; \mu_{ij} = \beta_{0} + x'\beta +\gamma_j*Black + u_j +\nu_{t1} +  \nu_{t2}* Black  \\
 &amp; \gamma_j \sim \text{CAR}(\bar \gamma_j, \tau_{\gamma}/n_j) \\
 &amp;  u_j \sim \text{CAR}(\bar u_j, \tau_u /n_j)\\
+&amp; \nu_{t2} \sim RW1(time)\\
+&amp; \nu_{t1} \sim N(0, \tau_t) \\
 \end{aligned}`
 $$
 
-
-* Vague Gamma priors for all the `\(\tau\)`'s 
-* Vague Normal priors for all the fixed effect `\(\beta\)`'s and `\(\gamma\)`'s 
 
 ---
 
@@ -245,34 +322,64 @@ $$
 
 ---
 
-## INLA in R {.smaller}
+## INLA in R
 `library(INLA)`
 
-Unstructured Model
+`std_rate~male+black+scale(lths)+`
 
-`mod1&lt;-std_rate~male+black+scale(lths)+pershigdis*year`
-`+f(year,model="iid")`
-`+f(conum, model="iid")`
+`  f(year2, model = "rw1",constr = T, scale.model = T)+`
 
-Spatially structured Model with Random Slope
+`   f(struct, model="besag", graph="cl_graph", constr = T, scale.model = T)+`
 
-`mod2&lt;-std_rate~male+black+scale(lths)+pershigdis*year`
-`+f(conum, model="bym", graph="usagraph.gra")`
-`+f(year, model="iid")`
-`+f(year, black, model="besag",graph="usagraph.gra")`
+`   f(year3, bl2,  model="iid")+`
+
+`   f(struct2, bl2, model="besag", graph="cl_graph", constr = T, scale.model = T)`
 
 ---
 
+## Results
+- Time trend in Black/white Mortality
+
+
+![](CSparks_FSU_talk_files/figure-html/unnamed-chunk-8-1.png)&lt;!-- --&gt;
+
+---
+
+## County time trends
+
+![](CSparks_FSU_talk_files/figure-html/unnamed-chunk-9-1.png)&lt;!-- --&gt;
+
+---
+## Highlighed trends
+![](CSparks_FSU_talk_files/figure-html/unnamed-chunk-10-1.png)&lt;!-- --&gt;
+  
+---
+## Spatial trend
+
+![](CSparks_FSU_talk_files/figure-html/unnamed-chunk-11-1.png)&lt;!-- --&gt;
+
+
+---
+## Spatial disparity
+
+![](CSparks_FSU_talk_files/figure-html/unnamed-chunk-12-1.png)&lt;!-- --&gt;
+
+
+
+---
 
 ## Discussion
 * We see that, while there is a persistence of the gap in black-white mortality:
     + The mortality gap appears to be fairly consistent over time
-    + In highly segregated areas, the mortality difference are decreasing
-    + Suggests some evidence to support the Williams and Collins (2001) perspective
+    + In some areas, the mortality difference are decreasing
+    + Results point to higher disparities in several notable Florida rural areas
 
+* Spatio-temporal modeling allows for the incorporation of dynamics that cross-sectional models cannot
+  
+  
 * INLA allows for rapid deployment of Bayesian statistical models with latent Gaussian random effects
     + Faster and *generally* as accurate as MCMC
-    + Potentially an attractive solution for problems where large data/complex models may make MCMC less desireable
+    + Potentially an attractive solution for problems where large data/complex models may make MCMC less desirable
 
 ---
 
@@ -284,7 +391,11 @@ Spatially structured Model with Random Slope
 
 [UTSA Demography](http://hcap.utsa.edu/demography/)
 
-Slides created via the R package [**xaringan**](https://github.com/yihui/xaringan).
+Slides created via the [R](https://cran.r-project.org) package [**xaringan**](https://github.com/yihui/xaringan)
+
+All talk materials available at my [Github page](https://github.com/coreysparks)
+
+R-INLA examples available at my [Rpubs page](https://rpubs.com/corey_sparks)
     </textarea>
 <style data-target="print-only">@media screen {.remark-slide-container{display:block;}.remark-slide-scaler{box-shadow:none;}}</style>
 <script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>
