@@ -1,0 +1,85 @@
+---
+title: "Discussion Comments"
+subtitle: "Session 204 - Spatial Modeling in Demography"
+author: "Corey Sparks"
+institute: "University of Texas @ San Antonio"
+date: "2022/04/09 (updated: `r Sys.Date()`)"
+output:
+  xaringan::moon_reader:
+    lib_dir: libs
+    nature:
+      highlightStyle: github
+      highlightLines: true
+      countIncrementalSlides: false
+---
+
+
+---
+
+# Zhang
+### Women’s Reproductive Autonomy in Burkina Faso: The Role of Mobility
+
+--
+
+- comment
+
+--
+
+- comment
+
+--
+
+---
+
+# Martes-Carmargo & Fuentes-Rivera
+### Spatial Analysis of Teenage Childbearing in Mexico
+
+--
+
+- comment
+
+--
+
+- comment
+
+--
+
+
+---
+# Meitei and Singh
+### Undernutrition as a Primary Prognosticator of Under-5 Mortality in India: A Spatially Explicit Structural Equation Modeling Approach
+--
+
+- comment
+
+--
+
+- comment
+
+--
+
+---
+
+# Mueller et al
+### Market Concentration and Natural Resource Development in Rural America
+--
+
+- comment
+
+--
+
+- comment
+
+--
+
+---
+
+class: center, middle
+
+# Thanks!
+
+[@coreysparks1](https://twitter.com/CoreySparks1)
+
+Slides created via the R package [**xaringan**](https://github.com/yihui/xaringan).
+
+
